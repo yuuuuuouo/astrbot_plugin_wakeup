@@ -1,0 +1,38 @@
+{
+    "allowed_models": {
+        "type": "list",
+        "description": "允许触发唤醒的模型名称白名单（精确匹配）",
+        "hint": "模型名称，如 gpt-4o-mini, deepseek-chat，留空则允许所有模型触发。",
+        "default": []
+    },
+    "trigger_keyword": {
+        "type": "string",
+        "description": "自定义唤醒截获词",
+        "hint": "大模型输出的标签关键词。例如填 NEXT，则系统会截获 [NEXT: 30m] 或 [NEXT: 120m]。仅支持 m（分钟）作为时间单位。不区分大小写。",
+        "default": "NEXT"
+    },
+    "wakeup_prompt": {
+        "type": "text",
+        "description": "自定义唤醒提示词",
+        "hint": "闹钟触发时发送给大模型的系统指令。根据主 prompt 自由修改，防止模型出幻觉不建议留空。",
+        "default": "设定的休眠时间已到，根据自己当前的状态选择是否要给她发送消息，或者去处理自己的事情。注意：以上为系统推送，不是她说的话。"
+    },
+    "max_retries": {
+        "type": "int",
+        "description": "唤醒失败时的最大重试次数",
+        "hint": "默认 5 次。",
+        "default": 5
+    },
+    "retry_delay": {
+        "type": "int",
+        "description": "重试唤醒的间隔时间（秒）",
+        "hint": "默认 120 秒。",
+        "default": 120
+    },
+    "default_silence_hours": {
+        "type": "float",
+        "description": "静默默认兜底时间（小时）",
+        "hint": "当大模型忘记输出唤醒标签时，系统自动为其设置的默认休眠时间，确保生物钟的心跳永不停止。设为 0 则关闭兜底。默认 6 小时。",
+        "default": 6
+    }
+}
