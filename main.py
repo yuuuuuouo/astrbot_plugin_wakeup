@@ -91,7 +91,6 @@ class WakeupPlugin(Star):
             rf"\[{re.escape(self.trigger_keyword)}\s*:\s*(\d+)\s*m\]",
             re.IGNORECASE,
         )
-        self.no_reply_pattern = re.compile(r"\[NO_REPLY\]", re.IGNORECASE)
 
         # ---------- 运行时状态 ----------
         self.alarms: Dict[str, asyncio.Task] = {}
@@ -420,11 +419,10 @@ class WakeupPlugin(Star):
         reply_text = getattr(llm_resp, "completion_text", "") or ""
         logger.info(f"[wakeup] 💬 LLM 回复 | umo={umo} | text={reply_text!r}")
 
-        is_silent = bool(self.no_reply_pattern.search(reply_text))
         send_text = self._clean_for_send(reply_text)
 
         # 发送消息
-        if not is_silent and send_text:
+        if send_text:
             self._waking_umos.add(umo)
             try:
                 if self.bubble_separator:

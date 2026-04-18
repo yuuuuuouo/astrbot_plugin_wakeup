@@ -33,7 +33,7 @@
         "type": "list",
         "description": "发送前的自定义清理正则",
         "hint": "唤醒消息发送前，依次应用这些正则将匹配内容替换为空。每行填一个正则表达式。留空则不做任何清理。",
-        "default": ["\\[NO_REPLY\\]", "\\[NEXT\\s*:\\s*\\d+m\\]"]
+        "default": ["\\[NEXT\\s*:\\s*\\d+m\\]"]
     },
     "default_silence_minutes": {
         "type": "int",
