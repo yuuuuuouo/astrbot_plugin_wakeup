@@ -1,5 +1,5 @@
 name: astrbot_plugin_wakeup
 desc: 隐式生物钟与主动唤醒引擎 —— 让大模型自主规划下一次找你的时间
-version: 0.0.2
+version: 0.1.0
 author: yuuuuuouo
 repo: https://github.com/yuuuuuouo/astrbot_plugin_wakeup

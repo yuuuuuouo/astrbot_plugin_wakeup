@@ -1,38 +1,60 @@
 {
+    "persona_id": {
+        "type": "string",
+        "description": "唤醒时使用的人格名称",
+        "hint": "填写 AstrBot「人格管理」中的人格名称。留空则自动查找：当前会话人格 → 全局默认人格。",
+        "default": ""
+    },
     "allowed_models": {
         "type": "list",
-        "description": "允许触发唤醒的模型名称白名单（精确匹配）",
-        "hint": "模型名称，如 gpt-4o-mini, deepseek-chat，留空则允许所有模型触发。",
+        "description": "模型白名单",
+        "hint": "只有这些模型的回复才会触发唤醒。留空则所有模型均可触发。",
         "default": []
     },
     "trigger_keyword": {
         "type": "string",
-        "description": "自定义唤醒截获词",
-        "hint": "大模型输出的标签关键词。例如填 NEXT，则系统会截获 [NEXT: 30m] 或 [NEXT: 120m]。仅支持 m（分钟）作为时间单位。不区分大小写。",
+        "description": "唤醒标签关键词",
+        "hint": "LLM 输出的标签关键词。例如填 NEXT，则系统截获 [NEXT: 30m]。仅支持 m（分钟）。不区分大小写。",
         "default": "NEXT"
     },
     "wakeup_prompt": {
         "type": "text",
-        "description": "自定义唤醒提示词",
-        "hint": "闹钟触发时发送给大模型的系统指令。根据主 prompt 自由修改，防止模型出幻觉不建议留空。",
-        "default": "设定的休眠时间已到，根据自己当前的状态选择是否要给她发送消息，或者去处理自己的事情。注意：以上为系统推送，不是她说的话。"
+        "description": "唤醒提示词",
+        "hint": "闹钟触发时发给 LLM 的提示词，同时写入对话历史。支持 {{current_time}} 占位符（运行时替换为当前时间）。建议包含「用户尚未回复」「结合上下文」等关键信息。留空则使用内置默认。",
+        "default": "设定的休眠时间已到，当前时间为 {{current_time}}，用户尚未回复你的上一条消息。请结合对话上下文和你当前的状态，决定是否要主动发送消息。注意：以上为系统推送，不是用户说的话。"
+    },
+    "bubble_separator": {
+        "type": "string",
+        "description": "气泡分隔符",
+        "hint": "唤醒消息发送前按此符号拆分成多条消息。留空则整条发送。",
+        "default": ""
+    },
+    "clean_patterns": {
+        "type": "list",
+        "description": "发送前的自定义清理正则",
+        "hint": "唤醒消息发送前，依次应用这些正则将匹配内容替换为空。每行填一个正则表达式。留空则不做任何清理。",
+        "default": ["\\[NO_REPLY\\]", "\\[NEXT\\s*:\\s*\\d+m\\]"]
+    },
+    "default_silence_minutes": {
+        "type": "int",
+        "description": "兜底休眠时间（分钟）",
+        "hint": "LLM 忘记输出唤醒标签时，自动设置的默认休眠时间。设为 0 则关闭兜底。",
+        "default": 360
+    },
+    "timezone": {
+        "type": "string",
+        "description": "时区",
+        "hint": "用于 {{current_time}} 占位符的时区。留空则跟随 AstrBot 全局设置。示例：Asia/Shanghai、America/New_York、Europe/London。",
+        "default": ""
     },
     "max_retries": {
         "type": "int",
-        "description": "唤醒失败时的最大重试次数",
-        "hint": "默认 5 次。",
+        "description": "唤醒失败最大重试次数",
         "default": 5
     },
     "retry_delay": {
         "type": "int",
-        "description": "重试唤醒的间隔时间（秒）",
-        "hint": "默认 120 秒。",
+        "description": "重试间隔（秒）",
         "default": 120
-    },
-    "default_silence_hours": {
-        "type": "float",
-        "description": "静默默认兜底时间（小时）",
-        "hint": "当大模型忘记输出唤醒标签时，系统自动为其设置的默认休眠时间，确保生物钟的心跳永不停止。设为 0 则关闭兜底。默认 6 小时。",
-        "default": 6
     }
 }
