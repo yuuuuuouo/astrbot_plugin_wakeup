@@ -540,24 +540,30 @@ class WakeupPlugin(Star):
 
         try:
             await asyncio.sleep(delay_seconds)
+            
             if self._terminated:
-                logger.info(f"[wakeup] 🚫 插件已停止，跳过 | umo={umo}")
+                # 【改写】静默退出，避免重启时刷屏
+                logger.debug(f"[wakeup] 插件已停止，跳过 | umo={umo}")
                 return
 
             if umo in self._smashed_umos:
-                logger.info(f"[wakeup] 🔨 闹钟已被砸碎（sleep后检查），跳过 | umo={umo}")
+                # 【改写】内部清理机制，不需要让用户看到
+                logger.debug(f"[wakeup] 闹钟已被正常砸碎，跳过 | umo={umo}")
                 self._smashed_umos.discard(umo)
                 return
 
+            # 这个是真正要干活了，保留 info 让用户知道
             logger.info(f"[wakeup] ⏰ 倒计时结束，准备唤醒 | umo={umo}")
 
-            if not self._is_model_allowed():
-                logger.info(f"[wakeup] 🚫 模型不在白名单 | umo={umo}")
+            # 【修复】传入 umo，精准判断当前会话模型
+            if not self._is_model_allowed(umo):
+                # 【改写】预期内的拦截，不再用 info 刷屏
+                logger.debug(f"[wakeup] 模型不在白名单，放弃唤醒 | umo={umo}")
                 return
 
             for attempt in range(1, self.max_retries + 1):
                 if umo in self._smashed_umos:
-                    logger.info(f"[wakeup] 🔨 重试前检测到闹钟被砸碎，中止 | umo={umo}")
+                    logger.debug(f"[wakeup] 重试前检测到用户已回复，中止 | umo={umo}")
                     self._smashed_umos.discard(umo)
                     return
                 try:
@@ -565,9 +571,16 @@ class WakeupPlugin(Star):
                     logger.info(f"[wakeup] ✅ 唤醒成功（第 {attempt} 次） | umo={umo}")
                     return
                 except _SmashedException:
-                    logger.info(f"[wakeup] 🔨 唤醒过程中闹钟被砸碎，中止 | umo={umo}")
+                    logger.debug(f"[wakeup] 唤醒发送中用户已回复，中止 | umo={umo}")
                     return
                 except Exception as e:
+                    error_msg = str(e).lower()
+                    
+                    # 【新增】致命错误熔断：如果是模型不存在/渠道不可用，直接砸碎闹钟，放弃重试
+                    if "model_not_found" in error_msg or "no available channel" in error_msg:
+                        logger.error(f"[wakeup] 💀 检测到废弃模型或渠道失效，终止该唤醒任务 | umo={umo}")
+                        return
+                        
                     logger.warning(
                         f"[wakeup] ❌ 第 {attempt}/{self.max_retries} 次失败: "
                         f"{type(e).__name__}: {e}"
@@ -575,10 +588,10 @@ class WakeupPlugin(Star):
                     if attempt < self.max_retries:
                         await asyncio.sleep(self.retry_delay)
 
-            logger.error(f"[wakeup] 💀 唤醒彻底失败 | umo={umo}")
+            logger.error(f"[wakeup] 💀 唤醒彻底失败，已达到最大重试次数 | umo={umo}")
 
         except asyncio.CancelledError:
-            logger.debug(f"[wakeup] 🔨 闹钟被取消 | umo={umo}")
+            logger.debug(f"[wakeup] 闹钟任务被强行取消 | umo={umo}")
             raise
         finally:
             current = self.alarms.get(umo)
@@ -589,17 +602,33 @@ class WakeupPlugin(Star):
 
     # ==================== 模型白名单 ====================
 
-    def _is_model_allowed(self) -> bool:
+    def _is_model_allowed(self, umo: str) -> bool:
         if not self.allowed_models:
             return True
         try:
-            provider = self.context.get_using_provider()
+            provider = None
+            
+            # 1. 优先尝试获取当前会话 (umo) 绑定的独立 provider
+            if hasattr(self.context, "session_manager"):
+                session = self.context.session_manager.get_session(umo)
+                # 如果这个会话绑定了特定的 provider_id (说明用户在这个聊天里单独切过模型)
+                if session and getattr(session, "provider_id", None):
+                    provider = self.context.get_provider(session.provider_id)
+            
+            # 2. 如果会话没有独立绑定，或者获取失败，则回退到全局默认 provider
+            if provider is None:
+                provider = self.context.get_using_provider()
+                
             if provider is None:
                 return False
+                
             model_name = (provider.get_model() or "").lower()
+            
+            # 检查当前真正要用的模型是否在白名单内
             return any(a in model_name for a in self.allowed_models)
+            
         except Exception as e:
-            logger.warning(f"[wakeup] 白名单检查出错: {e}")
+            logger.warning(f"[wakeup] 白名单检查出错 | umo={umo}: {e}")
             return False
 
     # ==================== 持久化 ====================
