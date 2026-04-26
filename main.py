@@ -99,6 +99,14 @@ class WakeupPlugin(Star):
 
     async def initialize(self):
         self._terminated = False
+
+        # 延迟搜索 bot 实例（给适配器连接留时间）
+        async def _delayed_search():
+            await asyncio.sleep(3)
+            if self._cqhttp_bot is None:
+                await self._try_acquire_bot()
+
+        asyncio.create_task(_delayed_search())
         await self._restore_alarms()
 
     async def terminate(self):
@@ -112,6 +120,73 @@ class WakeupPlugin(Star):
                 task.cancel()
         self.alarms.clear()
         self.last_raw_text.clear()
+        
+    # ==================== 主动获取 Bot 实例 ====================
+
+    async def _try_acquire_bot(self) -> bool:
+        """从 AstrBot 内部主动搜索 CQHttp 实例"""
+        if self._cqhttp_bot is not None:
+            return True
+
+        try:
+            ctx = self.context
+            # 搜索所有可能持有平台列表的属性
+            for mgr_name in [
+                "platform_manager",
+                "_platform_manager",
+                "platform_mgr",
+                "_platform_mgr",
+            ]:
+                mgr = getattr(ctx, mgr_name, None)
+                if mgr is None:
+                    continue
+                for list_name in [
+                    "platforms",
+                    "platform_insts",
+                    "_platforms",
+                    "adapters",
+                ]:
+                    plist = getattr(mgr, list_name, None)
+                    if not plist or not hasattr(
+                        plist, "__iter__"
+                    ):
+                        continue
+                    for p in plist:
+                        bot = getattr(p, "bot", None)
+                        if bot and hasattr(
+                            bot, "send_private_msg"
+                        ):
+                            self._cqhttp_bot = bot
+                            logger.info(
+                                "[wakeup] ✅ 主动获取到 "
+                                "CQHttp 实例"
+                            )
+                            # 顺便获取 self_id
+                            if not self._bot_qq_id:
+                                cfg = getattr(
+                                    p, "config", {}
+                                )
+                                sid = cfg.get(
+                                    "id", ""
+                                ) or ""
+                                if not sid:
+                                    meta = getattr(
+                                        p,
+                                        "metadata",
+                                        None,
+                                    )
+                                    if meta:
+                                        sid = getattr(
+                                            meta,
+                                            "id",
+                                            "",
+                                        ) or ""
+                            return True
+        except Exception as e:
+            logger.debug(
+                f"[wakeup] 主动搜索 bot 失败: {e}"
+            )
+        return False
 
     # ==================== 指令: /wakeup ====================
 
@@ -529,6 +604,51 @@ class WakeupPlugin(Star):
 
             if not self._is_model_allowed(umo):
                 return
+
+            # 等待 bot 实例就绪（重启后可能尚未获取）
+            if self._cqhttp_bot is None:
+                logger.info(
+                    "[wakeup] ⏳ 等待 CQHttp 实例..."
+                )
+                await self._try_acquire_bot()
+                if self._cqhttp_bot is None:
+                    for _ in range(24):  # 最多等 2 分钟
+                        await asyncio.sleep(5)
+                        if (
+                            self._cqhttp_bot is not None
+                            or self._terminated
+                            or umo in self._smashed_umos
+                        ):
+                            break
+                if self._cqhttp_bot is None:
+                    logger.error(
+                        f"[wakeup] 💀 等待超时，未获取到"
+                        f" CQHttp 实例 | umo={umo}"
+                    )
+                    # 设兜底闹钟稍后再试
+                    if (
+                        self.default_silence_minutes > 0
+                        and not self._terminated
+                    ):
+                        async def _wait_fb(
+                            u=umo, d=300
+                        ):
+                            await asyncio.sleep(3)
+                            if (
+                                u not in self.alarms
+                                and not self._terminated
+                            ):
+                                await (
+                                    self
+                                    ._schedule_alarm_by_umo(
+                                        u, d
+                                    )
+                                )
+                        asyncio.create_task(_wait_fb())
+                    return
+                logger.info(
+                    "[wakeup] ✅ CQHttp 实例已就绪，继续唤醒"
+                )
 
             # 注入唤醒
             inject_ok = False
