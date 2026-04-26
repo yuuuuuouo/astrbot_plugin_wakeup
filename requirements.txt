@@ -1,1 +1,1 @@
-# 本插件仅依赖 AstrBot 内置模块（asyncio、re、json），无需额外依赖
+# 本插件仅依赖 AstrBot 内置模块，无需额外依赖
