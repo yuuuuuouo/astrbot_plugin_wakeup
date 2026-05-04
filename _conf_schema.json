@@ -28,5 +28,11 @@
         "description": "模型白名单",
         "hint": "只有这些模型的回复才会触发唤醒。留空则所有模型均可触发。",
         "default": []
+    },
+    "extra_commands": {
+        "type": "list",
+        "description": "额外忽略的指令",
+        "hint": "如果你有其他插件的指令不想被当成普通聊天，可以在这里添加。不需要加斜杠。",
+        "default": []
     }
 }
