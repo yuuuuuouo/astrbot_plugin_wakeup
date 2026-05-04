@@ -57,6 +57,11 @@ class WakeupPlugin(Star):
         self._bot_qq_id = str(
             self.config.get("bot_qq_id", "")
         ).strip()
+        self._extra_commands = [
+            c.strip().lower().lstrip("/")
+            for c in self.config.get("extra_commands", [])
+            if c and c.strip()
+        ]
 
         # ---------- 正则 ----------
         self.next_pattern = re.compile(
@@ -261,7 +266,7 @@ class WakeupPlugin(Star):
         if umo in self._waking_umos:
 
             async def _cleanup(u=umo):
-                await asyncio.sleep(5)
+                await asyncio.sleep(30)
                 self._waking_umos.discard(u)
 
             asyncio.create_task(_cleanup())
@@ -334,10 +339,12 @@ class WakeupPlugin(Star):
             except Exception:
                 pass
 
-        # 空消息过滤
+        # 收集消息文本
         msg_text = (
             getattr(event, "message_str", None) or ""
-        )
+        ).strip()
+
+        # 从 message_chain 提取
         has_chain = False
         try:
             chain = getattr(event, "message_chain", None)
@@ -361,11 +368,66 @@ class WakeupPlugin(Star):
                         break
         except Exception:
             pass
-        if not msg_text.strip() and not has_chain:
+
+        # 空消息过滤
+        if not msg_text and not has_chain:
             return
 
-        # / 指令不砸碎（用 /smash 专门砸碎）
-        if msg_text.strip().startswith("/"):
+        # ============================================
+        # 指令过滤（兼容 AstrBot v4.24.2+）
+        # v4.24.2 会把 / 前缀剥掉再传给 message_str，
+        # 所以无法用 startswith("/") 判断。
+        # 改为：匹配已知指令关键词，命中则跳过不砸碎。
+        # ============================================
+        _KNOWN_COMMANDS = {
+            # AstrBot 内置指令
+            "help", "new", "provider", "reset",
+            "sid", "stats", "stop",
+            # 本插件指令
+            "smash", "wakeup",
+            # 常见插件指令（按需追加）
+            "status", "about", "plugin", "plugins",
+            "config", "reload", "update", "version",
+            "t2i", "tts", "stt", "draw", "img",
+            "search", "web", "wiki",
+            "music", "song",
+            "weather",
+            "roll", "dice",
+            "menu", "list",
+            "bind", "unbind",
+            "on", "off", "enable", "disable",
+            "set", "get", "info",
+            "ban", "unban", "kick",
+            "mute", "unmute", "switch",
+            "recall", "revoke", "ls",
+        }
+
+        _KNOWN_COMMANDS.update(self._extra_commands)
+
+        # 检查 1：message_str 被剥掉 / 后是否匹配已知指令
+        _msg_lower = msg_text.lower()
+        _msg_first_word = _msg_lower.split()[0] if _msg_lower else ""
+        if _msg_first_word in _KNOWN_COMMANDS:
+            logger.debug(
+                f"[wakeup] 检测到指令(关键词匹配)，"
+                f"跳过砸碎 | msg={msg_text[:50]}"
+            )
+            return
+
+        # 检查 2：原始文本仍以 / 开头（兼容旧版本）
+        if msg_text.startswith("/"):
+            logger.debug(
+                f"[wakeup] 检测到指令(/前缀)，"
+                f"跳过砸碎 | msg={msg_text[:50]}"
+            )
+            return
+
+        # 检查 3：利用 is_at_or_wake_command 属性
+        # 如果消息是唤醒指令且文本匹配已知指令，跳过
+        _is_wake_cmd = getattr(
+            event, "is_at_or_wake_command", None
+        )
+        if _is_wake_cmd and _msg_first_word in _KNOWN_COMMANDS:
             return
 
         umo = event.unified_msg_origin
@@ -379,12 +441,14 @@ class WakeupPlugin(Star):
             old = self.alarms.pop(umo)
             if not old.done():
                 old.cancel()
-            self._smashed_umos.add(umo)
+                self._smashed_umos.add(umo)
             logger.info(
                 f"[wakeup] 🔨 用户发消息，砸碎闹钟 | "
                 f"umo={umo}"
             )
             self._remove_alarm_record(umo)
+        else:
+            self._smashed_umos.discard(umo)
 
         self.last_raw_text.pop(umo, None)
 
@@ -467,14 +531,14 @@ class WakeupPlugin(Star):
                 "或先发一条消息）"
             )
 
-        # 解析 umo
-        parts = umo.split(":")
+        # 解析 umo（用 rsplit 防止前面部分含有 : 导致错位）
+        parts = umo.rsplit(":", 2)
         if len(parts) < 3:
             raise RuntimeError(
                 f"无法解析 umo: {umo}"
             )
-        session_id = parts[-1]
-        msg_type_str = parts[-2]
+        session_id = parts[2]
+        msg_type_str = parts[1]
         is_group = "Group" in msg_type_str
 
         prompt = self.wakeup_prompt
